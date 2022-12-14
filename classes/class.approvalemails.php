@@ -249,5 +249,43 @@ class PMPro_Approvals_Email extends PMProEmail {
 
 		return $this->sendEmail();
 	}
+
+	/**
+	 * Send user's an email that their account has been denied.
+	 *
+	 * @param $member. The member's ID or object.
+	 */
+	public function sendMemberRenewal( $member ) {
+
+		if ( empty( $member ) ) {
+			return;
+		} elseif ( is_int( $member ) ) {
+			$member = get_user_by( 'ID', $member );
+		}
+
+		$level = pmpro_getMembershipLevelForUser( $member->ID );
+
+		$this->email    = $member->user_email;
+		$this->subject  = sprintf( __( 'Your membership at %s has been renew.', 'pmpro-approvals' ), get_bloginfo( 'name' ) );
+		$this->template = 'user_renew_membership';
+		$this->body     = file_get_contents( PMPRO_APP_DIR . '/email/user_renew_membership.html' );
+		$this->data     = array(
+			'subject'               => $this->subject,
+			'name'                  => $member->display_name,
+			'member_email'          => $member->user_email,
+			'user_login'            => $member->user_login,
+			'sitename'              => get_option( 'blogname' ),
+			'membership_id'         => $level->id,
+			'membership_level_name' => $level->name,
+			'siteemail'             => pmpro_getOption( 'from_email' ),
+			'login_link'            => wp_login_url(),
+		);
+		$this->from     = pmpro_getOption( 'from' );
+		$this->fromname = pmpro_getOption( 'from_name' );
+
+		//$this->data = apply_filters( 'pmpro_approvals_member_denied_email_data', $this->data, $member, $level );-
+		update_option('ets_sent_renewal_mail',$this->data );
+		return $this->sendEmail();
+	}
 }
 PMPro_Approvals_Email::get_instance();

@@ -1079,6 +1079,9 @@ class PMPro_Approvals {
 			$user_level = pmpro_getMembershipLevelForUser( $user_id );
 			$level_id   = $user_level->id;
 		}
+		if ( empty($user_level) ) {
+			$user_level = pmpro_getMembershipLevelForUser( $user_id );
+		}
 
 		do_action( 'pmpro_approvals_before_approve_member', $user_id, $level_id );
 
@@ -1087,7 +1090,6 @@ class PMPro_Approvals {
 		$order_status = 'success';
 		$last_order->getLastMemberOrder( $user_id, $order_status );
 		if($last_order->gateway == 'etsstripe'){
-			//$order = $last_order->getMemberOrderByID($last_order_id);
 			$payment_intent_id = $last_order->notes;
 			$payment_intent = $last_order->Gateway->retrieve_payment_intent($payment_intent_id);
 		
@@ -1098,8 +1100,8 @@ class PMPro_Approvals {
 						'customer'
 					),
 				);
-				if($confirm_payment->charges->data[0]){
-					$last_order->payment_transaction_id = $confirm_payment->charges->data[0]->id;
+				if($payment_intent->charges->data && $payment_intent->charges->data[0]){
+					$last_order->payment_transaction_id = $payment_intent->charges->data[0]->id;
 				} else {					
 					try{
 						$confirm_payment = $payment_intent->confirm( $params );
@@ -1115,8 +1117,8 @@ class PMPro_Approvals {
 						//return false;
 					}
 					if ( is_string( $confirm_payment ) ) {
-						$order->error      = __( 'Error processing payment intent.', 'paid-memberships-pro' ) . ' ' . $confirm_payment;
-						$order->shorterror = $order->error;
+						$last_order->error      = __( 'Error processing payment intent.', 'paid-memberships-pro' ) . ' ' . $confirm_payment;
+						$last_order->shorterror = $last_order->error;
 						return false;
 					}
 					// Payment should now be processed.
@@ -1125,8 +1127,17 @@ class PMPro_Approvals {
 				}
 			}
 			if ( $payment_intent && $payment_intent_id ) {
-				//$customer = $payment_intent_id->customer;
-				$customer_id = $payment_intent->customer;
+				$customer = $payment_intent->customer;
+				if (is_string( $customer )) {
+					$customer_id = $customer;
+				}
+				if (is_object( $customer )) {
+					$customer_id = $customer->id;
+
+				}
+			
+				update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription_customer_id', $customer_id );
+
 			}
 			//Create subscription if level is recurring.
 			if ( pmpro_isLevelRecurring( $user_level ) && ! $last_order->subscription_transaction_id && $customer_id ) {
@@ -1135,18 +1146,26 @@ class PMPro_Approvals {
 				$last_order->BillingFrequency = $user_level->cycle_number;
 				try{
 					$subscription = $last_order->Gateway->create_subscription_for_customer_from_order($customer_id, $last_order );
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription', $subscription );
+
 				}
 				catch ( Stripe\Error\Base $e ) {
 					$msgt = $e->getMessage();
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg', $msgt );
+					
 				} catch ( \Throwable $e ) {
 					$msgt = $e->getMessage();
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_1', $msgt ); 
 				} catch ( \Exception $e ) {
 					$msgt = $e->getMessage();
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_2', $msgt ); 
 				}
 				if ( empty( $subscription ) ) {
 					// There was an issue creating the subscription.
+					$msgt = __( 'Error creating subscription for customer.', 'paid-memberships-pro' );
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_empty', $msgt );
 					$last_order->error      = __( 'Error creating subscription for customer.', 'paid-memberships-pro' );
-					$last_order->shorterror = $order->error;
+					$last_order->shorterror = $last_order->error;
 					return false;
 				}
 				$setup_intent = $subscription->pending_setup_intent;
@@ -1320,6 +1339,11 @@ class PMPro_Approvals {
 	 */
 	public static function pmpro_before_change_membership_level( $level_id, $user_id, $old_levels, $cancel_level ) {
 
+		if ( $old_levels[0]->ID == $level_id ) {
+			set_transient( 'ets_pmpro_before_renew_membership_level_'.$user_id, $old_levels[0]->ID, 3600 );
+			update_option('pmpro_before_checkout',array('oldid'=>$old_levels[0]->ID,'new_level'=> $level_id ));
+		}
+
 		// First see if the user is cancelling. If so, try to clean up approval data if they are pending.
 		if ( $level_id == 0 ) {
 			if ( self::isPending( $user_id, $old_levels[0]->ID ) ) {
@@ -1379,6 +1403,15 @@ class PMPro_Approvals {
 		//send email to admin that a new member requires approval.
 		$email = new PMPro_Approvals_Email();
 		$email->sendAdminPending( $user_id );
+		$old_level_id = get_transient( 'ets_pmpro_before_renew_membership_level_'.$user_id );
+		if ( $old_level_id && $old_level_id == $level_id ) {
+
+			update_option('pmpro_after_checkout', $level_id );
+			self::complete_stripe_payment_intent_and_create_subscription($level_id, $user_id );
+			$renew_email = new PMPro_Approvals_Email();
+			$renew_email->sendMemberRenewal( $user_id );
+		}
+
 	}
 
 	/**
@@ -1553,6 +1586,12 @@ class PMPro_Approvals {
 			'subject'     => __( 'Your membership to !!sitename!! has been denied.', 'pmpro-approvals' ),
 			'description' => __( 'Approvals - Denied Email', 'pmpro-approvals' ),
 			'body'        => file_get_contents( PMPRO_APP_DIR . '/email/application_denied.html' ),
+		);
+
+		$pmproet_email_defaults['user_renew_membership'] = array(
+			'subject'     => __( 'Your membership to !!sitename!! has been Renew.', 'pmpro-approvals' ),
+			'description' => __( 'Renew Email', 'pmpro-approvals' ),
+			'body'        => file_get_contents( PMPRO_APP_DIR . '/email/user_renew_membership.html' ),
 		);
 
 		return $pmproet_email_defaults;
@@ -2018,6 +2057,122 @@ style="display: none;"<?php } ?>>
 			}
 		}
 		return $translated_text;
+	}
+
+	public static function complete_stripe_payment_intent_and_create_subscription($level_id, $user_id ){
+		if ( empty( $level_id ) ) {
+			$user_level = pmpro_getMembershipLevelForUser( $user_id );
+			$level_id   = $user_level->id;
+		}
+		if ( empty($user_level) ) {
+			$user_level = pmpro_getMembershipLevelForUser( $user_id );
+		}
+		//complete intent payment
+		$last_order = new MemberOrder();
+		$order_status = 'success';
+		$last_order->getLastMemberOrder( $user_id, $order_status );
+		if($last_order->gateway == 'etsstripe'){
+			$payment_intent_id = $last_order->notes;
+			$payment_intent = $last_order->Gateway->retrieve_payment_intent($payment_intent_id);
+		
+			if (! $last_order->payment_transaction_id && $payment_intent_id && $payment_intent  ) {
+				$params = array(
+					'expand' => array(
+						'payment_method',
+						'customer'
+					),
+				);
+				if($payment_intent->charges->data && $payment_intent->charges->data[0]){
+					$last_order->payment_transaction_id = $payment_intent->charges->data[0]->id;
+				} else {					
+					try{
+						$confirm_payment = $payment_intent->confirm( $params );
+
+					} catch ( Stripe\Error\Base $e ) {
+						$msgt = $e->getMessage();
+						//return false;
+					} catch ( \Throwable $e ) {
+						$msgt = $e->getMessage();
+						//return false;
+					} catch ( \Exception $e ) {
+						$msgt = $e->getMessage();
+						//return false;
+					}
+					if ( is_string( $confirm_payment ) ) {
+						$last_order->error      = __( 'Error processing payment intent.', 'paid-memberships-pro' ) . ' ' . $confirm_payment;
+						$last_order->shorterror = $last_order->error;
+						return false;
+					}
+					// Payment should now be processed.
+					$payment_transaction_id = $confirm_payment->charges->data[0]->id;
+					$last_order->payment_transaction_id = $payment_transaction_id;
+				}
+			}
+			if ( $payment_intent && $payment_intent_id ) {
+				$customer = $payment_intent->customer;
+				if (is_string( $customer )) {
+					$customer_id = $customer;
+				}
+				if (is_object( $customer )) {
+					$customer_id = $customer->id;
+
+				}
+			
+				update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription_customer_id', $customer_id );
+
+			}
+			//Create subscription if level is recurring.
+			if ( pmpro_isLevelRecurring( $user_level ) && ! $last_order->subscription_transaction_id && $customer_id ) {
+				$last_order->PaymentAmount = $user_level->billing_amount;
+				$last_order->BillingPeriod    = $user_level->cycle_period;
+				$last_order->BillingFrequency = $user_level->cycle_number;
+				try{
+					$subscription = $last_order->Gateway->create_subscription_for_customer_from_order($customer_id, $last_order );
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription', $subscription );
+
+				}
+				catch ( Stripe\Error\Base $e ) {
+					$msgt = $e->getMessage();
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg', $msgt );
+					
+				} catch ( \Throwable $e ) {
+					$msgt = $e->getMessage();
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_1', $msgt ); 
+				} catch ( \Exception $e ) {
+					$msgt = $e->getMessage();
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_2', $msgt ); 
+				}
+				if ( empty( $subscription ) ) {
+					// There was an issue creating the subscription.
+					$msgt = __( 'Error creating subscription for customer.', 'paid-memberships-pro' );
+					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_empty', $msgt );
+					$last_order->error      = __( 'Error creating subscription for customer.', 'paid-memberships-pro' );
+					$last_order->shorterror = $last_order->error;
+					return false;
+				}
+				$setup_intent = $subscription->pending_setup_intent;
+				if ( ! empty( $setup_intent->status ) && 'requires_action' === $setup_intent->status ) {
+					// We will need to reload the page to authenticate, so save the subscription ID in the setup intent
+					// so that we don't lose it.
+					$setup_intent = $last_order->Gateway->add_subscription_id_to_setup_intent( $setup_intent, $subscription->id );
+					if ( is_string( $setup_intent ) ) {
+						$last_order->error      = $setup_intent;
+						$last_order->shorterror = $last_order->error;
+						return false;
+					}
+					$last_order->stripe_setup_intent = $setup_intent;
+					$last_order->errorcode = true;
+					$last_order->error     = __( 'Customer authentication is required to finish setting up your subscription. Please complete the verification steps issued by your payment provider.', 'paid-memberships-pro' );
+		
+					return false;
+				}
+
+				// Successfully created a subscription.
+				$subscription_transaction_id = $subscription->id;
+				$last_order->subscription_transaction_id = $subscription_transaction_id;
+			}
+		}
+		$last_order->saveOrder();
 	}
 
 

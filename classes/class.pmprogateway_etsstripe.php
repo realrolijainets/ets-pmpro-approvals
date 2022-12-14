@@ -98,11 +98,11 @@ class PMProGateway_etsStripe extends PMProGateway
 		), 10, 2 );
 
 		//add some fields to edit user page (Updates)
-		add_action( 'pmpro_after_membership_level_profile_fields', array(
+		/*add_action( 'pmpro_after_membership_level_profile_fields', array(
 			'PMProGateway_etsStripe',
 			'user_profile_fields'
 		) );
-		add_action( 'profile_update', array( 'PMProGateway_etsStripe', 'user_profile_fields_save' ) );
+		add_action( 'profile_update', array( 'PMProGateway_etsStripe', 'user_profile_fields_save' ) );*/
 
 		//old global RE showing billing address or not
 		global $pmpro_stripe_lite;
@@ -706,9 +706,11 @@ class PMProGateway_etsStripe extends PMProGateway
 	 */
 	public static function pmpro_after_checkout( $user_id, $morder ) {
 		global $gateway;
-
+		update_option('ets_pmpro_after_checkout_log_0',array('user_id'=>$user_id ,'gateway'=> $gateway,'order'=>$morder) );
 		if ( $gateway == "etsstripe" ) {
+			update_option('ets_pmpro_after_checkout_log_1',array('user_id'=>$user_id ,'gateway'=> $gateway,'order'=>$morder) );
 			if ( self::$is_loaded && ! empty( $morder ) && ! empty( $morder->Gateway ) && ! empty( $morder->Gateway->customer ) && ! empty( $morder->Gateway->customer->id ) ) {
+				update_option('ets_pmpro_after_checkout_log_2',array('user_id'=>$user_id ,'customer'=> $morder->Gateway->customer->id,'order_customer'=>$morder->Gateway->customer) );
 				update_user_meta( $user_id, "pmpro_stripe_customerid", $morder->Gateway->customer->id );
 			}
 		}
@@ -1565,6 +1567,8 @@ class PMProGateway_etsStripe extends PMProGateway
 			}
 
 			if ( ! empty( $customer_id ) ) {
+				update_option('ets_pmpro_after_checkout_log_3',array( 'user_id'=>$user_id ,'customer'=> $customer_id ) );
+
 				update_user_meta( $user_id, "pmpro_stripe_customerid", $customer_id );
 			}
 		}
@@ -2104,16 +2108,25 @@ class PMProGateway_etsStripe extends PMProGateway
 		}
 
 		// If we don't have a user yet, we need to update their user meta after registration.
+				update_option('ets_pmpro_after_checkout_log_4',array('user_id'=>$user_id ,'customer'=> $customer,'order_customer'=>$order) );
+
 		if ( empty( $user_id ) ) {
 			global $pmpro_stripe_customer_id;
 			$pmpro_stripe_customer_id = $customer->id;
 			if ( ! function_exists( 'pmpro_user_register_stripe_customerid' ) ) {
 				function pmpro_user_register_stripe_customerid( $user_id ) {
 					global $pmpro_stripe_customer_id;
+						update_option('ets_pmpro_after_checkout_log_5',array('user_id'=>$user_id ,'customer'=> $pmpro_stripe_customer_id,'order_customer'=>$order) );
 					update_user_meta( $user_id, "pmpro_stripe_customerid", $pmpro_stripe_customer_id );
 				}
 				add_action( "user_register", "pmpro_user_register_stripe_customerid" );
 			}
+
+		} else {
+			// User already exists. Update their Stripe customer ID.
+			update_option('ets_pmpro_after_checkout_log_6',array('user_id'=>$user_id ,'customer'=> $customer->id) );
+
+			update_user_meta( $user_id, 'pmpro_stripe_customerid', $customer->id );
 		}
 
 		/**

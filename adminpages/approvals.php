@@ -184,7 +184,7 @@ if ( ! empty( $_REQUEST['approve'] ) ) {
 				if ( get_user_meta($theuser->ID,'professional_title', true) ) {
 					$professional_title = get_user_meta($theuser->ID,'professional_title', true);
 				}
-				$full_url = '';
+				$full_cv_url = '';
 				$document_cv = get_user_meta($theuser->ID,'document_cv', true);
 				if ( $document_cv && is_array($document_cv) ) {
 					$full_cv_url = $document_cv['fullurl'];

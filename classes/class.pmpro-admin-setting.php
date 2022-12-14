@@ -24,7 +24,7 @@ class PMPro_Admin_recurring_setting
 
 		add_action('pmpro_membership_level_after_billing_details_settings', array( $pmpro_recurring, 'pmpro_recurring_custom_field' ) );
 
-		add_action( 'pmpro_save_membership_level', array( $pmpro_recurring, 'pmpro_recurring_save_cutom_date_save' ) );
+		add_action( 'pmpro_save_membership_level', array( $pmpro_recurring, 'pmpro_recurring_save_custom_date_save' ) );
 
 		add_filter( 'pmpro_allowed_refunds_gateways', array( $pmpro_recurring, 'pmpro_allowed_refunds_gateways' ), 10 );
 
@@ -80,7 +80,7 @@ class PMPro_Admin_recurring_setting
 	 * @param Memberlevel $level_id.
 	 * @return save date.
 	 */
-	public function pmpro_recurring_save_cutom_date_save($level_id){
+	public function pmpro_recurring_save_custom_date_save($level_id){
 		if (isset( $_POST['billing_recurring_date'] ) && $_POST['billing_recurring_date'] && isset( $_POST['billing_recurring_date_month'] ) && $_POST['billing_recurring_date_month']) {
 			$recurring_date = $_POST['billing_recurring_date'];
 			$recurring_month = $_POST['billing_recurring_date_month'];
