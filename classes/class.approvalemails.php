@@ -266,9 +266,9 @@ class PMPro_Approvals_Email extends PMProEmail {
 		$level = pmpro_getMembershipLevelForUser( $member->ID );
 
 		$this->email    = $member->user_email;
-		$this->subject  = sprintf( __( 'Your membership at %s has been renew.', 'pmpro-approvals' ), get_bloginfo( 'name' ) );
-		$this->template = 'user_renew_membership';
-		$this->body     = file_get_contents( PMPRO_APP_DIR . '/email/user_renew_membership.html' );
+		$this->subject  = sprintf( __( 'Your membership to %s has been renew.', 'pmpro-approvals' ), get_bloginfo( 'name' ) );
+		$this->template = 'after_renewal_mail';
+		$this->body     = file_get_contents( PMPRO_APP_DIR . '/email/after_renewal_mail.html' );
 		$this->data     = array(
 			'subject'               => $this->subject,
 			'name'                  => $member->display_name,
@@ -280,10 +280,9 @@ class PMPro_Approvals_Email extends PMProEmail {
 			'siteemail'             => pmpro_getOption( 'from_email' ),
 			'login_link'            => wp_login_url(),
 		);
+		$this->data['invoice_total'] = $level->billing_amount;
 		$this->from     = pmpro_getOption( 'from' );
 		$this->fromname = pmpro_getOption( 'from_name' );
-
-		//$this->data = apply_filters( 'pmpro_approvals_member_denied_email_data', $this->data, $member, $level );-
 		update_option('ets_sent_renewal_mail',$this->data );
 		return $this->sendEmail();
 	}

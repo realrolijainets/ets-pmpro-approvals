@@ -61,3 +61,6 @@
 	-ms-grid-column-span: 3;
 	grid-area: DiscountCode;
 }
+.pmpro_actionlinks #pmpro_actionlink-renew,.pmpro_actionlinks #pmpro_actionlink-change{
+	display: none;
+}

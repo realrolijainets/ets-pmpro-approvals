@@ -153,7 +153,7 @@ if ( ! empty( $_REQUEST['approve'] ) ) {
 	}
 	?>
 	
-	<table class="widefat">
+	<table class="widefat approvals-members">
 		<thead>
 			<tr class="thead">
 				<th><?php _e( 'ID', 'pmpro-approvals' ); ?></th>
@@ -293,20 +293,20 @@ if ( ! empty( $_REQUEST['approve'] ) ) {
 					<?php
 			}
 
-			/*if ( ! $theusers ) {
+			/*if ( ! $theusers ) {*/
 				?>
-				<tr>
+				<!-- <tr>
 				<td colspan="9"><p><?php _e( 'No pending members found.', 'pmpro-approvals' ); ?></p></td>
-				</tr>
+				</tr> -->
 				<?php
-			}*/
+			//}
 			?>
 					
 		</tbody>
 	</table>
 	</form>
 	<script type="text/javascript">
-		jQuery('.widefat').DataTable();
+		jQuery('.approvals-members').DataTable();
 	</script>
 	<?php
 	//echo pmpro_getPaginationString( $pn, $totalrows, $limit, 1, get_admin_url( null, '/admin.php?page=pmpro-approvals&s=' . urlencode( $s ) ), "&l=$l&limit=$limit&status=$status&sortby=$sortby&sortorder=$sortorder&pn=" );
