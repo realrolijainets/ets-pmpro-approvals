@@ -5,7 +5,10 @@ $update_sql = "UPDATE wpaj_pmpro_memberships_users SET membership_id = '2', init
 $update_sql = "UPDATE wpaj_pmpro_memberships_users SET membership_id = '3',initial_payment = '440'  WHERE membership_id = '5'";
 $update_order_sql = "UPDATE wpaj_pmpro_membership_orders  SET membership_id = '2', subtotal='385',total='385' WHERE membership_id = '4'";
 $update_order_sql = "UPDATE wpaj_pmpro_membership_orders  SET membership_id = '3',subtotal='440',total='440' WHERE membership_id = '5'";
-//$wpdb->query($update_sql);
+
+
+$sql = "UPDATE wpaj_pmpro_membership_orders INNER JOIN `wpaj_usermeta` as usermeta ON `usermeta`.`user_id` = `wpaj_pmpro_membership_orders`.`user_id` AND `usermeta`.`meta_key` = 'pmpro_stripe_customerid' SET gateway = 'etsstripe' WHERE gateway = 'stripe'"; 
+
  global $wpdb;
  $args = array(
     'number' => -1,
@@ -14,13 +17,7 @@ $update_order_sql = "UPDATE wpaj_pmpro_membership_orders  SET membership_id = '3
     'meta_compare' => '=' ,
 );
 $all_users = new WP_User_Query( $args );
-$select_sql = "SELECT * FROM wp_users AS wu
-            LEFT JOIN wp_usermeta AS wum ON wu.ID = wum.user_id AND wum.meta_key = 'pmpro_stripe_customerid'  
-            LEFT JOIN wp_pmpro_memberships_users AS `pmu`  ON `pmu`.`user_id` = wu.ID
-            LEFT JOIN wp_pmpro_membership_orders AS `pmo`  ON `pmo`.`user_id` = wu.ID
-            WHERE wum.meta_key = 'pmpro_stripe_customerid'
-            GROUP BY  `pmo`.`user_id`";
-//$stipe_members = $wpdb->get_results( $select_sql );
+
 if ( ! empty( $all_users->get_results() ) ) {
     ?>
     <h3>Stripe Connected Members</h3>
@@ -38,6 +35,7 @@ if ( ! empty( $all_users->get_results() ) ) {
                 <th><?php _e( 'Membership Status', 'pmpro-approvals' ); ?></th>
                 <th><?php _e( 'Order Status', 'pmpro-approvals' ); ?></th>
                 <th><?php _e( 'Stripe Status', 'pmpro-approvals' ); ?></th>
+                <th><?php _e( 'Gateway', 'pmpro-approvals' ); ?></th>
                 <th><?php _e( 'API Action', 'pmpro-approvals' ); ?></th>
             </tr>
         </thead>
@@ -67,12 +65,14 @@ if ( ! empty( $all_users->get_results() ) ) {
                         <td><?php echo date('F d, Y', strtotime($stipe_active_members->startdate)); ?></td>
                         <td><?php echo $stipe_active_members->status; ?></td>
                         <td><?php echo $stipe_active_members_order->status; ?></td>
+
                         <td><?php if ( $status ) {
                             echo $status;
                         } else{
                             echo 'None';
                         }
                         ?></td>
+                        <td><?php echo $stipe_active_members_order->gateway; ?></td>
                         <td>
                             <form method="post">
                                 <button type="submit" name="ets_run_stripe_api"><?php echo __( 'RUN API', 'pmpro-approvals' );?></button>
@@ -95,14 +95,13 @@ if ( ! empty( $all_users->get_results() ) ) {
                 $last_order->getLastMemberOrder( $user_id );
                 //Cancel old subscription
                 if ( ! empty( $last_order ) && ! empty( $last_order->subscription_transaction_id ) ) {
+                    $class_name = get_class($last_order->Gateway);
                     $subscription = $last_order->Gateway->get_subscription( $last_order->subscription_transaction_id );
                     
                     if ( ! empty( $subscription ) ) {
                         
                         //$subscription_up = $last_order->Gateway->updateSubscription( $last_order, $user_id );
-                        //var_dump($subscription_up);
                         $subscription_cancel = $last_order->Gateway->cancelSubscriptionAtGateway( $subscription, true );
-                        var_dump( $subscription_cancel );
                     }
                 }
                 if (! empty( $last_order )) {
