@@ -9,7 +9,7 @@ $update_order_sql = "UPDATE wpaj_pmpro_membership_orders  SET membership_id = '3
  global $wpdb;
  $args = array(
     'number' => -1,
-    'role' => 'Subscriber',
+    //'role' => 'Subscriber',
     'meta_key' => 'pmpro_stripe_customerid',
     'meta_compare' => '=' ,
 );
@@ -94,13 +94,17 @@ if ( ! empty( $all_users->get_results() ) ) {
                 $last_order = new MemberOrder();
                 $last_order->getLastMemberOrder( $user_id );
                 //Cancel old subscription
-               /* if ( ! empty( $last_order ) && ! empty( $last_order->subscription_transaction_id ) ) {
+                if ( ! empty( $last_order ) && ! empty( $last_order->subscription_transaction_id ) ) {
                     $subscription = $last_order->Gateway->get_subscription( $last_order->subscription_transaction_id );
-                    var_dump( $last_order->Gateway );
+                    
                     if ( ! empty( $subscription ) ) {
-                    //$last_order->Gateway->cancelSubscriptionAtGateway( $subscription, true );
+                        
+                        //$subscription_up = $last_order->Gateway->updateSubscription( $last_order, $user_id );
+                        //var_dump($subscription_up);
+                        $subscription_cancel = $last_order->Gateway->cancelSubscriptionAtGateway( $subscription, true );
+                        var_dump( $subscription_cancel );
                     }
-                }*/
+                }
                 if (! empty( $last_order )) {
                     $user_level = new PMPro_Membership_Level($pmpro_level_id);
                     $customer_id = get_user_meta($user_id, 'pmpro_stripe_customerid', true);

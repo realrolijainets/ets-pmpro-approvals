@@ -1440,8 +1440,23 @@ class PMProGateway_etsStripe extends PMProGateway
 				// This will likely be removed as we rework payment processing.
 				$order->stripe_customer = $customer;
 
-				// Process the charges.
-				$charges_processed = $this->process_charges( $order );
+				
+				if ( isset( $_GET['renew_level'] ) ) {
+					$renew_level_id = get_transient( 'ets_pmpro_before_renew_membership_level_'.$order->user_id );
+					$renew_level_id = $_GET['renew_level'];
+					$default_date  = date('Y-m-d' ,strtotime('2023-01-10'));
+					$current_date = date('Y-m-d');
+					if ($renew_level_id) {
+						if( $default_date <= $current_date ){
+							// Process the charges.
+							$charges_processed = $this->process_charges( $order );
+						}
+					}
+				} else {
+					$charges_processed = $this->process_charges( $order );
+				}
+				
+				
 				if ( ! empty( $order->error ) ) {
 					// There was an error processing charges.
 					// $order has an error message, so we don't need to add one.
@@ -2124,7 +2139,7 @@ class PMProGateway_etsStripe extends PMProGateway
 
 		} else {
 			// User already exists. Update their Stripe customer ID.
-			update_option('ets_pmpro_after_checkout_log_6',array('user_id'=>$user_id ,'customer'=> $customer->id) );
+						update_option('ets_pmpro_after_checkout_log_6',array('user_id'=>$user_id ,'customer'=> $customer->id) );
 
 			update_user_meta( $user_id, 'pmpro_stripe_customerid', $customer->id );
 		}
@@ -2204,7 +2219,7 @@ class PMProGateway_etsStripe extends PMProGateway
 	 * @param string $subscription_id to retrieve.
 	 * @return Stripe_Subscription|null
 	 */
-	private function get_subscription( $subscription_id ) {
+	public function get_subscription( $subscription_id ) {
 		try {
 			$customer = Stripe_Subscription::retrieve( $subscription_id );
 			return $customer;
@@ -2406,9 +2421,26 @@ class PMProGateway_etsStripe extends PMProGateway
 		$recurring_stripe_custom_date = get_pmpro_membership_level_meta( $level_id, '_pmpro_recurring_stripe_custom_full_date', true );
 
 		if ( !empty( $recurring_stripe_custom_date ) ) {
-			$trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
+			$renew_level_id = get_transient( 'ets_pmpro_before_renew_membership_level_'.$order->user_id );
+			$current_date = date('Y-m-d');
+			if ($renew_level_id) {
+				if( $recurring_stripe_custom_date <= $current_date ){
+					$trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
+				}
+				else {
+					$recurring_stripe_custom_date = date('Y-m-d', strtotime('2023-01-10'));
+					update_option('check_update_trail_periods', array( 'date'=>$recurring_stripe_custom_date,'trial_period_days'=>$trial_period_days,'days_in_billing_period'=>$days_in_billing_period,'renew_level_id'=>$renew_level_id ) );
+
+					$trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
+
+				}
+			} else{
+				$trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
+			}
 		}
-		//var_dump($order,$days_in_billing_period,$trial_period_days,$order->BillingFrequency);
+		update_option('check_update_trail_periods', array( 'date'=>$recurring_stripe_custom_date,'trial_period_days'=>$trial_period_days,'days_in_billing_period'=>$days_in_billing_period,'renew_level_id'=>$renew_level_id ) );
+		//var_dump($days_in_billing_period,$trial_period_days,$recurring_stripe_custom_date);
+
 
 		// For free trials, multiply the trial period for each additional free period.
 		if ( ! empty( $order->TrialBillingCycles ) && $order->TrialAmount == 0 ) {

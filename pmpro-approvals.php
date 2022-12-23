@@ -150,15 +150,43 @@ class PMPro_Approvals {
 
 		add_filter('pmpro_is_level_expiring_soon',array('PMPro_Approvals','pmpro_is_level_expiring_soon'), 10, 2);
 
-	}
+		add_action('pmpro_checkout_before_processing', array('PMPro_Approvals','pmpro_checkout_before_processing'));
 
+	}
+	public static function pmpro_checkout_before_processing()
+	{
+		if (isset($_GET['renew_level'])) {
+
+			$level_id = $_GET['renew_level'];
+			if ( ! empty( get_current_user_id() ) && $level_id ) {
+				$user_id  = get_current_user_id();
+				set_transient( 'ets_pmpro_before_renew_membership_level_'.$user_id, $level_id, 3600 );
+			}
+			//die;
+
+		}
+	}
 	public static function pmpro_is_level_expiring_soon($r, $level)
 	{
-		if ($level) {
+		/*if ($level) {
 			$days = 80;
 			//$now = current_time( 'timestamp' );
 			$now = strtotime('10-jan-2023');
 
+		 	if ( $now + ( $days * 3600 * 24 ) >= $level->enddate ) {
+				$r = true;
+			} else {
+				$r = false;
+			}
+		}*/
+		return $r;
+		if ( ! pmpro_isLevelExpiring( $level ) || empty( $level->enddate ) ) {
+			$r = false;
+		}
+		else {
+			$days = 80;
+			//$now = current_time( 'timestamp' );
+			$now = strtotime('10-jan-2023');
 		 	if ( $now + ( $days * 3600 * 24 ) >= $level->enddate ) {
 				$r = true;
 			} else {
@@ -169,14 +197,15 @@ class PMPro_Approvals {
 	}
 
 	public static function custom_pmproeewe_email_frequency( $settings ) {
+		$settings = array();
 		$settings[15] = 'membership_expiring';
 		$settings[10] = 'membership_expiring';
 		$settings[5]  = 'membership_expiring';
 		$settings[2]  = 'membership_expiring';
 
-		unset($settings[30]);
-		unset($settings[60]);
-		unset($settings[90]);
+		//unset($settings[30]);
+		//unset($settings[60]);
+		//unset($settings[90]);
 		return $settings;
 	}
 
@@ -1516,7 +1545,7 @@ class PMPro_Approvals {
 		}
 		global $wpdb;
 		$old_level_id = get_transient( 'ets_pmpro_before_renew_membership_level_'.$user_id );
-		update_option('chek_after_get_transient',$old_level_id);
+		update_option('check_after_get_transient',$old_level_id);
 		if ( $old_level_id && $old_level_id == $level_id ) {
 			if ( empty( $level_id ) ) {
 				$user_level = pmpro_getMembershipLevelForUser( $user_id );
@@ -1580,6 +1609,8 @@ class PMPro_Approvals {
 					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription_customer_id', $customer_id );
 
 				}
+
+				$customer_id = get_user_meta($user_id, 'pmpro_stripe_customerid', true);
 				//Create subscription if level is recurring.
 				if ( pmpro_isLevelRecurring( $user_level ) && ! $last_order->subscription_transaction_id && $customer_id ) {
 					$last_order->PaymentAmount = $user_level->billing_amount;
