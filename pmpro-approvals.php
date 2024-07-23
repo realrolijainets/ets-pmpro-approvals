@@ -22,7 +22,6 @@ function pmpro_approvals_plugins_loaded() {
 	require PMPRO_APP_DIR . '/classes/class.approvalemails.php';
 	require PMPRO_APP_DIR . '/classes/class.pmprogateway_etsstripe.php';
 	require PMPRO_APP_DIR . '/classes/class.pmpro-admin-setting.php';
-
 }
 add_action( 'plugins_loaded', 'pmpro_approvals_plugins_loaded' );
 
@@ -185,7 +184,7 @@ class PMPro_Approvals {
 			$r = false;
 		}
 		else {
-			$days = 173;
+			$days = 81;
 			//$now = current_time( 'timestamp' );
 			$now = strtotime('10-jan-2023');
 		 	if ( $now + ( $days * 3600 * 24 ) >= $level->enddate ) {
@@ -268,6 +267,7 @@ class PMPro_Approvals {
 	{
 		$pmpro_levels = pmpro_getAllLevels(false, true);
 		$mylevel = pmpro_getMembershipLevelForUser();
+			//var_dump($pmpro_member_action_links);
 		
 		if( array_key_exists($level_id, $pmpro_levels) && pmpro_isLevelExpiringSoon( $mylevel ) ) {
 			$pmpro_member_action_links['renew_ets'] = sprintf( '<a id="pmpro_actionlink-ets-renew" href="%s">%s</a>', esc_url( add_query_arg(array('level'=> $level_id,'renew_level'=>$level_id) , pmpro_url( 'checkout', '', 'https' ) ) ), esc_html__( 'Renew', 'paid-memberships-pro' ) );
@@ -1261,7 +1261,6 @@ class PMPro_Approvals {
 		if($last_order->gateway == 'etsstripe'){
 			$payment_intent_id = $last_order->notes;
 			$payment_intent = $last_order->Gateway->retrieve_payment_intent($payment_intent_id);
-		
 			if (! $last_order->payment_transaction_id && $payment_intent_id && $payment_intent  ) {
 				$params = array(
 					'expand' => array(
@@ -1304,20 +1303,20 @@ class PMPro_Approvals {
 					$customer_id = $customer->id;
 
 				}
-				
 			
-				update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription_customer_id', $customer_id );
+			// 	update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription_customer_id', $customer_id );
 
 			}
 			//Create subscription if level is recurring.
+			
 			if ( pmpro_isLevelRecurring( $user_level ) && ! $last_order->subscription_transaction_id && $customer_id ) {
 				$last_order->PaymentAmount = $user_level->billing_amount;
 				$last_order->BillingPeriod    = $user_level->cycle_period;
 				$last_order->BillingFrequency = $user_level->cycle_number;
+
 				try{
 					$subscription = $last_order->Gateway->create_subscription_for_customer_from_order($customer_id, $last_order );
 					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription', $subscription );
-
 				}
 				catch ( Stripe\Error\Base $e ) {
 					$msgt = $e->getMessage();
@@ -1334,7 +1333,7 @@ class PMPro_Approvals {
 					// There was an issue creating the subscription.
 					$msgt = __( 'Error creating subscription for customer.', 'paid-memberships-pro' );
 					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_empty', $msgt );
-					$last_order->error      = __( 'Error creating subscription for customer.', 'paid-memberships-pro' );
+					$last_order->error      = $msgt;
 					$last_order->shorterror = $last_order->error;
 					return false;
 				}
@@ -1360,6 +1359,7 @@ class PMPro_Approvals {
 				$last_order->subscription_transaction_id = $subscription_transaction_id;
 			}
 		}
+		//die;
 		$last_order->saveOrder();
 
 		// update user meta to save timestamp and user who approved.
@@ -1633,6 +1633,7 @@ class PMPro_Approvals {
 				}
 
 				$customer_id = get_user_meta($user_id, 'pmpro_stripe_customerid', true);
+
 				//Create subscription if level is recurring.
 				if ( pmpro_isLevelRecurring( $user_level ) && ! $last_order->subscription_transaction_id && $customer_id ) {
 					$last_order->PaymentAmount = $user_level->billing_amount;
@@ -2360,7 +2361,7 @@ style="display: none;"<?php } ?>>
 		return $translated_text;
 	}
 
-	public static function complete_stripe_payment_intent_and_create_subscription($level_id, $user_id ){
+	/*public static function complete_stripe_payment_intent_and_create_subscription($level_id, $user_id ){
 		if ( empty( $level_id ) ) {
 			$user_level = pmpro_getMembershipLevelForUser( $user_id );
 			$level_id   = $user_level->id;
@@ -2476,7 +2477,7 @@ style="display: none;"<?php } ?>>
 			}
 		}
 		$last_order->saveOrder();
-	}
+	}*/
 
 
 } // end class
