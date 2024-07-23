@@ -1,4 +1,5 @@
  <?php
+
 require_once PMPRO_DIR . '/adminpages/admin_header.php';
 
 $update_sql = "UPDATE wpaj_pmpro_memberships_users SET membership_id = '2', initial_payment = '385' WHERE membership_id = '4' AND user_id = '12'";
@@ -15,16 +16,16 @@ $sql = "UPDATE wpaj_pmpro_membership_orders INNER JOIN `wpaj_usermeta` as userme
  $args = array(
     'number' => -1,
     //'role' => 'Subscriber',
-    'meta_key' => 'pmpro_stripe_customerid',
+    'meta_key' => 'grace_level',
     'meta_compare' => '=' ,
 );
 $all_users = new WP_User_Query( $args );
 
 if ( ! empty( $all_users->get_results() ) ) {
     ?>
-    <h3>Stripe Connected Members</h3>
+    <h3>Grace Members</h3>
 
-    <table class="widefat stipe-members">
+    <table class="widefat grace-members">
         <thead>
             <tr class="thead">
                 <th><?php _e( 'ID', 'pmpro-approvals' ); ?></th>
@@ -39,7 +40,7 @@ if ( ! empty( $all_users->get_results() ) ) {
                 <th><?php _e( 'Order Status', 'pmpro-approvals' ); ?></th>
                 <th><?php _e( 'Stripe Status', 'pmpro-approvals' ); ?></th>
                 <th><?php _e( 'Gateway', 'pmpro-approvals' ); ?></th>
-                <th><?php _e( 'API Action', 'pmpro-approvals' ); ?></th>
+                <th><?php _e( 'Action', 'pmpro-approvals' ); ?></th>
             </tr>
         </thead>
         <tbody id="users" class="list:user user-list">
@@ -84,9 +85,9 @@ if ( ! empty( $all_users->get_results() ) ) {
                         <td><?php echo $stipe_active_members_order->gateway; ?></td>
                         <td>
                             <form method="post">
-                                <button type="submit" name="ets_run_stripe_api"><?php echo __( 'RUN API', 'pmpro-approvals' );?></button>
-                                <input type="hidden" name="wp_user_id" value="<?php echo $user_id;?>">
-                                <input type="hidden" name="pmpro_level_id" value="<?php echo $stipe_active_members->membership_id;?>">
+                                <button type="submit" name="ets_run_grace_fix"><?php echo __( 'Update', 'pmpro-approvals' );?></button>
+                                <input type="hidden" name="ets_wp_user_id" value="<?php echo $user_id;?>">
+                                <input type="hidden" name="ets_pmpro_level_id" value="<?php echo $stipe_active_members->membership_id;?>">
                             </form>
                         </td>
                         
@@ -97,65 +98,31 @@ if ( ! empty( $all_users->get_results() ) ) {
             ?>
             </tbody>
             <?php
-            if (isset( $_POST['wp_user_id'] ) && isset( $_POST['pmpro_level_id'] ) ) {
-                $user_id = $_POST['wp_user_id'];
-                $pmpro_level_id = $_POST['pmpro_level_id'];
+            if (isset( $_POST['ets_wp_user_id'] ) && isset( $_POST['ets_pmpro_level_id'] ) ) {
+            	global $wpdb;
+                $user_id = $_POST['ets_wp_user_id'];
+                $pmpro_level_id = $_POST['ets_pmpro_level_id'];
                 $last_order = new MemberOrder();
-                $last_order->getLastMemberOrder( $user_id );
-                //Cancel old subscription
-                if ( ! empty( $last_order ) && ! empty( $last_order->subscription_transaction_id ) ) {
-                    $class_name = get_class($last_order->Gateway);
-                    $subscription = $last_order->Gateway->get_subscription( $last_order->subscription_transaction_id );
-                    
-                    if ( ! empty( $subscription ) ) {
-                        
-                        //$subscription_up = $last_order->Gateway->updateSubscription( $last_order, $user_id );
-                        $subscription_cancel = $last_order->Gateway->cancelSubscriptionAtGateway( $subscription, true );
-                    }
-                }
-                if (! empty( $last_order )) {
-                    $user_level = new PMPro_Membership_Level($pmpro_level_id);
-                    $customer_id = get_user_meta($user_id, 'pmpro_stripe_customerid', true);
-                    if ( ! empty( $last_order ) && pmpro_isLevelRecurring( $user_level ) && $customer_id ) {
-                        $last_order->PaymentAmount = $user_level->billing_amount;
-                        $last_order->BillingPeriod    = $user_level->cycle_period;
-                        $last_order->BillingFrequency = $user_level->cycle_number;
-                        try{
-                            $subscription = $last_order->Gateway->create_subscription_for_customer_from_order($customer_id, $last_order );
-                            update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription', $subscription );
-                        }
-                        catch ( Stripe\Error\Base $e ) {
-                            $msgt = $e->getMessage();
-                            update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg', $msgt );
-                            
-                        } catch ( \Throwable $e ) {
-                            $msgt = $e->getMessage();
-                            update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_1', $msgt ); 
-                        } catch ( \Exception $e ) {
-                            $msgt = $e->getMessage();
-                            update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_2', $msgt ); 
-                        }
-                        if ( empty( $subscription ) ) {
-                            // There was an issue creating the subscription.
-                            $msgt = __( 'Error creating subscription for customer.', 'paid-memberships-pro' );
-                            update_pmpro_membership_order_meta( $last_order->id, 'ets_check_error_msg_empty', $msgt );
-                            $last_order->error      = __( 'Error creating subscription for customer.', 'paid-memberships-pro' );
-                            $last_order->shorterror = $last_order->error;
-                            return false;
-                        }
-                        // Successfully created a subscription.
-                        $subscription_transaction_id = $subscription->id;
-                        $last_order->subscription_transaction_id = $subscription_transaction_id;
-                        //$last_order->Gateway->create_subscription()
-                        //$this->create_subscription( $order );
-                    }
-                    $last_order->saveOrder();
-                }
+                $last_order->getLastMemberOrder( $user_id, 'cancelled' );
+                $last_order->status = 'success';
+                $last_order->saveOrder();
+				$level_data = pmpro_getLevel($pmpro_level_id);
+				$initial_payment = $level_data->initial_payment;
+				$billing_amount = $level_data->billing_amount;
+				$cycle_number = $level_data->cycle_number;
+				$cycle_period = $level_data->cycle_period;
+				$sql = "SELECT startdate FROM $wpdb->pmpro_memberships_users WHERE user_id=$user_id AND membership_id = $pmpro_level_id AND status='expired' order by id DESC LIMIT 1";
+            	$res = $wpdb->get_row($sql);
+            	if ($res) {
+					$startdate = $res->startdate;
+            	}
+            	$update_sql = "UPDATE $wpdb->pmpro_memberships_users SET initial_payment= $initial_payment,billing_amount = $billing_amount,cycle_number = $cycle_number, cycle_period = '$cycle_period',startdate='$startdate' WHERE user_id=$user_id AND membership_id = $pmpro_level_id AND status='active'";
+            	$success = $wpdb->query($update_sql);
             }
 }?>
 
 <script type="text/javascript">
-    jQuery('.stipe-members').DataTable();
+    jQuery('.grace-members').DataTable();
 </script>
 <style type="text/css">
     #wpfooter{

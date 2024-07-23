@@ -178,13 +178,14 @@ class PMPro_Approvals {
 			} else {
 				$r = false;
 			}
-		}*/
-		return $r;
+		}
+		return $r;*/
+		
 		if ( ! pmpro_isLevelExpiring( $level ) || empty( $level->enddate ) ) {
 			$r = false;
 		}
 		else {
-			$days = 80;
+			$days = 173;
 			//$now = current_time( 'timestamp' );
 			$now = strtotime('10-jan-2023');
 		 	if ( $now + ( $days * 3600 * 24 ) >= $level->enddate ) {
@@ -211,12 +212,24 @@ class PMPro_Approvals {
 
 	public static function pmpro_membership_post_membership_expiry( $user_id, $level_id ) {
 		// Make sure we aren't already in a grace period for this level
+		global $wpdb;
 		$grace_level = get_user_meta( $user_id, 'grace_level', true );
 		if ( empty( $grace_level ) || $grace_level !== $level_id ) {
 			$grace_level                  = array();
 			$grace_level['user_id'] = $user_id;
 			$grace_level['membership_id'] = $level_id;
 			$grace_level['enddate']       = date( 'Y-m-d H:i:s', strtotime( '+80 days', strtotime('10-jan-2023') ) );
+			$level_data = pmpro_getLevel($level_id);
+			$grace_level['initial_payment'] = $level_data->initial_payment;
+			$grace_level['billing_amount'] = $level_data->billing_amount;
+			$grace_level['cycle_number'] = $level_data->cycle_number;
+			$grace_level['cycle_period'] = $level_data->cycle_period;
+
+			$sql = "SELECT startdate FROM $wpdb->pmpro_memberships_users WHERE user_id=$user_id AND membership_id = $level_id AND status='expired' order by id DESC LIMIT 1";
+            $res = $wpdb->get_row($sql);
+            if ($res) {
+				$grace_level['startdate'] = $res->startdate;
+            }
 			pmpro_changeMembershipLevel( $grace_level, $user_id );
 			update_user_meta(
 				$user_id, 'pmpro_approval_' . $level_id, array(
@@ -301,7 +314,7 @@ class PMPro_Approvals {
 			array(),
 			PMPRO_APPROVAL_VERSION
 		);
-		if ( isset( $_GET['page'] ) && $_GET['page'] == 'pmpro-approvals' || $_GET['page'] == 'stripe-members' || $_GET['page'] == 'none-stripe-members') {
+		if ( isset( $_GET['page'] ) && $_GET['page'] == 'pmpro-approvals' || $_GET['page'] == 'stripe-members' || $_GET['page'] == 'none-stripe-members' || $_GET['page'] == 'grace-members') {
 			wp_enqueue_style('pmpro_approvals_datatable_css');
 			wp_enqueue_script('pmpro_approvals_datatable_js');
 		}
@@ -384,6 +397,7 @@ class PMPro_Approvals {
 
 		add_submenu_page( 'pmpro-dashboard', __( 'Stripe not connected Members', 'pmpro-approvals' ), __( 'Stripe Not Connected Members', 'pmpro-approvals' ), 'pmpro_approvals', 'none-stripe-members', array( 'PMPro_Approvals', 'admin_none_stripe_members' ) );
 
+		add_submenu_page( 'pmpro-dashboard', __( 'Grace Members', 'pmpro-approvals' ), __( 'Grace Members', 'pmpro-approvals' ), 'pmpro_approvals', 'grace-members', array( 'PMPro_Approvals', 'admin_grace_members' ) );
 
 	}
 
@@ -442,6 +456,13 @@ class PMPro_Approvals {
 	 */
 	public static function admin_none_stripe_members() {
 		require_once dirname( __FILE__ ) . '/adminpages/none-stripe-members.php';
+	}
+
+	/**
+	 * Load the Approvals admin page.
+	 */
+	public static function admin_grace_members() {
+		require_once dirname( __FILE__ ) . '/adminpages/grace-members.php';
 	}
 
 	/**
@@ -1283,6 +1304,7 @@ class PMPro_Approvals {
 					$customer_id = $customer->id;
 
 				}
+				
 			
 				update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription_customer_id', $customer_id );
 

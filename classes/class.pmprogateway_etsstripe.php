@@ -617,6 +617,7 @@ class PMProGateway_etsStripe extends PMProGateway
 			}
 		}
 	}
+	
 
 	/**
 	 * Don't require the CVV.
@@ -1441,7 +1442,7 @@ class PMProGateway_etsStripe extends PMProGateway
 				$order->stripe_customer = $customer;
 
 				
-				if ( isset( $_GET['renew_level'] ) ) {
+				/*if ( isset( $_GET['renew_level'] ) ) {
 					$renew_level_id = get_transient( 'ets_pmpro_before_renew_membership_level_'.$order->user_id );
 					$renew_level_id = $_GET['renew_level'];
 					$default_date  = date('Y-m-d' ,strtotime('2023-01-10'));
@@ -1454,7 +1455,9 @@ class PMProGateway_etsStripe extends PMProGateway
 					}
 				} else {
 					$charges_processed = $this->process_charges( $order );
-				}
+
+				}*/
+				$charges_processed = $this->process_charges( $order );
 				
 				
 				if ( ! empty( $order->error ) ) {
@@ -2420,10 +2423,27 @@ class PMProGateway_etsStripe extends PMProGateway
 		$level_id = $order->membership_id;
 		$recurring_stripe_custom_date = get_pmpro_membership_level_meta( $level_id, '_pmpro_recurring_stripe_custom_full_date', true );
 
-		if ( !empty( $recurring_stripe_custom_date ) ) {
+		$current_date = date('Y-m-d');
+
+		// Check if the current date exceeds January 10 of the current year
+		$current_year = date('Y');
+		$recurring_level_date = get_pmpro_membership_level_meta( $level_id, '_pmpro_recurring_stripe_custom_date', true );
+		$recruring_level_month = get_pmpro_membership_level_meta( $level_id, '_pmpro_recurring_stripe_custom_month', true );
+		$current_year_jan_10 = date('Y') . '-'. $recruring_level_month . '-'. $recurring_level_date;
+		$order_created_year = date('Y',$order->timestamp);
+		//strtotime($current_date) >= strtotime($current_year_jan_10)
+		if (strtotime($current_date) >= strtotime($current_year_jan_10) || $order_created_year < $current_year) {
+		    // Set the new date to January 1 of the next year
+		    $new_year = $current_year + 1;
+		    $recurring_stripe_custom_date = date('Y-m-d', strtotime($new_year . '-'. $recruring_level_month . '-'. $recurring_level_date));
+		} else {
+		    // Set the new date to January 1 of the current year
+		    $recurring_stripe_custom_date = date('Y-m-d', strtotime($current_year . '-'. $recruring_level_month . '-'. $recurring_level_date));
+		}
+		if ( !empty( $recurring_level_date ) && !empty( $recruring_level_month ) ) {
 			$renew_level_id = get_transient( 'ets_pmpro_before_renew_membership_level_'.$order->user_id );
 			$current_date = date('Y-m-d');
-			if ($renew_level_id) {
+			/*if ($renew_level_id) {
 				if( $recurring_stripe_custom_date <= $current_date ){
 					$trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
 				}
@@ -2436,7 +2456,8 @@ class PMProGateway_etsStripe extends PMProGateway
 				}
 			} else{
 				$trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
-			}
+			}*/
+			$trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
 		}
 		update_option('check_update_trail_periods', array( 'date'=>$recurring_stripe_custom_date,'trial_period_days'=>$trial_period_days,'days_in_billing_period'=>$days_in_billing_period,'renew_level_id'=>$renew_level_id ) );
 		//var_dump($days_in_billing_period,$trial_period_days,$recurring_stripe_custom_date);

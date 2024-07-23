@@ -64,3 +64,9 @@
 .pmpro_actionlinks #pmpro_actionlink-renew,.pmpro_actionlinks #pmpro_actionlink-change{
 	display: none;
 }
+.pmpro_checkout h3 span.pmpro_checkout-h3-msg{
+	display:none;
+}
+.pmpro_actionlinks #pmpro_actionlink-levels{
+	display: none;
+}

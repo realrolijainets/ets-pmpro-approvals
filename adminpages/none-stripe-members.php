@@ -1,4 +1,24 @@
 <?php
+ $level_id = 3;
+ $recurring_stripe_custom_date = get_pmpro_membership_level_meta( $level_id, '_pmpro_recurring_stripe_custom_full_date', true );
+ $trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
+ $current_date = date('Y-m-d');
+
+    // Check if the current date exceeds January 10 of the current year
+    $current_year = date('Y');
+    $recurring_level_date = get_pmpro_membership_level_meta( $level_id, '_pmpro_recurring_stripe_custom_date', true );
+    $recruring_level_month = get_pmpro_membership_level_meta( $level_id, '_pmpro_recurring_stripe_custom_month', true );
+    $current_year_jan_10 = date('Y') . '-'. $recruring_level_month . '-'. $recurring_level_date;
+    if (strtotime($current_date) > strtotime($current_year_jan_10)) {
+        // Set the new date to January 1 of the next year
+        $new_year = $current_year + 1;
+        $recurring_stripe_custom_date = date('Y-m-d', strtotime($new_year . '-'. $recruring_level_month . '-'. $recurring_level_date));
+    } else {
+        // Set the new date to January 1 of the current year
+        $recurring_stripe_custom_date = date('Y-m-d', strtotime($current_year . '-'. $recruring_level_month . '-'. $recurring_level_date));
+    }
+    $trial_period_days = ceil( abs( strtotime( date_i18n( "Y-m-d\TH:i:s" ), current_time( "timestamp" ) ) - strtotime($recurring_stripe_custom_date, current_time( "timestamp" ) ) )/86400);
+ var_dump($trial_period_days,$recurring_stripe_custom_date);
 require_once PMPRO_DIR . '/adminpages/admin_header.php';
 global $wpdb;
 /*"SELECT * FROM wp_users AS wu 
@@ -66,7 +86,11 @@ if ( ! empty( $all_users->get_results() ) ) {
 						<td><a href="<?php echo get_edit_user_link($user_id); ?>"><?php echo $user->user_email;?></a></td>
 						<td><?php echo $active_level->name; ?></td>
 						<td><?php echo $active_level->initial_payment; ?></td>
-						<td><?php echo date('F d, Y', $active_level->startdate); ?></td>
+						<td><?php if(isset($active_level->startdate) && $active_level->startdate && $active_level->startdate != '0000-00-00 00:00:00'){
+                            echo date('F d, Y', strtotime($active_level->startdate));
+                            } else{
+                                echo "None";
+                            } ?></td>
 						<td><?php echo $end_date; ?></td>
 					</tr>
 				<?php
