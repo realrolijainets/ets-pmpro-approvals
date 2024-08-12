@@ -151,6 +151,8 @@ class PMPro_Approvals {
 
 		add_action('pmpro_checkout_before_processing', array('PMPro_Approvals','pmpro_checkout_before_processing'));
 
+		add_action('pmpro_member_action_links_after', array('PMPro_Approvals', 'ets_pmpro_member_action_after_links'));
+
 	}
 	public static function pmpro_checkout_before_processing()
 	{
@@ -1233,8 +1235,8 @@ class PMPro_Approvals {
 	 * @param bool $force    Whether to force the appproval.
 	 */
 	public static function approveMember( $user_id, $level_id = null, $force = false ) {
+		//die('ok');
 		global $current_user, $msg, $msgt;
-
 		//make sure they have permission
 		if ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'pmpro_approvals' ) && ! $force ) {
 			$msg  = -1;
@@ -1257,10 +1259,14 @@ class PMPro_Approvals {
 		//complete intent payment
 		$last_order = new MemberOrder();
 		$order_status = 'success';
+		// var_dump($last_order);
+		// die;
 		$last_order->getLastMemberOrder( $user_id, $order_status );
 		if($last_order->gateway == 'etsstripe'){
 			$payment_intent_id = $last_order->notes;
+			//$payment_intent_id =  "pi_3PlVmkEJfNYkxEoI0KqjNpoY";
 			$payment_intent = $last_order->Gateway->retrieve_payment_intent($payment_intent_id);
+			
 			if (! $last_order->payment_transaction_id && $payment_intent_id && $payment_intent  ) {
 				$params = array(
 					'expand' => array(
@@ -1268,10 +1274,13 @@ class PMPro_Approvals {
 						'customer'
 					),
 				);
+				
 				if($payment_intent->charges->data && $payment_intent->charges->data[0]){
 					$last_order->payment_transaction_id = $payment_intent->charges->data[0]->id;
 				} else {					
 					try{
+						//$last_order->tax_calculation_id = $payment_intent->metadata->tax_calculation;
+						// $last_order->Gateway->tax_transactions_create_from_calculation($last_order);
 						$confirm_payment = $payment_intent->confirm( $params );
 
 					} catch ( Stripe\Error\Base $e ) {
@@ -1310,7 +1319,9 @@ class PMPro_Approvals {
 			//Create subscription if level is recurring.
 			
 			if ( pmpro_isLevelRecurring( $user_level ) && ! $last_order->subscription_transaction_id && $customer_id ) {
-				$last_order->PaymentAmount = $user_level->billing_amount;
+				//$last_order->PaymentAmount = $user_level->billing_amount;
+				// apply tax
+				$last_order->PaymentAmount  =  $user_level->billing_amount+round((float)$user_level->billing_amount * 0.1, 2);
 				$last_order->BillingPeriod    = $user_level->cycle_period;
 				$last_order->BillingFrequency = $user_level->cycle_number;
 
@@ -1583,7 +1594,8 @@ class PMPro_Approvals {
 			if($last_order->gateway == 'etsstripe') {
 				$payment_intent_id = $last_order->notes;
 				$payment_intent = $last_order->Gateway->retrieve_payment_intent($payment_intent_id);
-			
+
+				
 				if (! $last_order->payment_transaction_id && $payment_intent_id && $payment_intent  ) {
 					$params = array(
 						'expand' => array(
@@ -1591,10 +1603,12 @@ class PMPro_Approvals {
 							'customer'
 						),
 					);
+
 					if($payment_intent->charges->data && $payment_intent->charges->data[0]){
 						$last_order->payment_transaction_id = $payment_intent->charges->data[0]->id;
 					} else {					
 						try{
+							
 							$confirm_payment = $payment_intent->confirm( $params );
 
 						} catch ( Stripe\Error\Base $e ) {
@@ -1969,8 +1983,8 @@ style="display: none;"<?php } ?>>
 					if ( ! self::isPending( $user->ID, $level_id ) ) {
 ?>
 style="display: none;"<?php } ?>>
-						<a href="?user_id=<?php echo $user->ID; ?>&approve=<?php echo $user->ID; ?>">Approve</a> |
-						<a href="?user_id=<?php echo $user->ID; ?>&deny=<?php echo $user->ID; ?>">Deny</a>
+						<a href="<?php echo $_SERVER['REQUEST_URI']?>&approve=<?php echo $user->ID; ?>">Approve</a> |
+						<a href="<?php echo $_SERVER['REQUEST_URI']?>&deny=<?php echo $user->ID; ?>">Deny</a>
 					</span>
 					<?php } ?>
 				</td>
@@ -2478,6 +2492,13 @@ style="display: none;"<?php } ?>>
 		}
 		$last_order->saveOrder();
 	}*/
+
+	public static function ets_pmpro_member_action_after_links($value='')
+	{
+		?>
+		<input type="hidden" name="subscription_text" value="here3">
+		<?php
+	}
 
 
 } // end class

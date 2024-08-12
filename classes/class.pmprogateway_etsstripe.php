@@ -2597,6 +2597,9 @@ class PMProGateway_etsStripe extends PMProGateway {
 				'postal_code' => $order->billing->zip,
 				'state'       => $order->billing->state,
 			);
+			/*$customer_args['tax'] = array(
+				'validate_location' => 'immediately',
+			);*/
 		} elseif (
 			! $this->customer_has_billing_address( $customer ) &&
 			! empty( $user->pmpro_baddress1 ) &&
@@ -2615,6 +2618,9 @@ class PMProGateway_etsStripe extends PMProGateway {
 				'postal_code' => $user->pmpro_bzipcode,
 				'state'       => $user->pmpro_bstate,
 			);
+			/*$customer_args['tax'] = array(
+				'validate_location' => 'immediately',
+			);*/
 		}
 
 		/**
@@ -2860,9 +2866,12 @@ class PMProGateway_etsStripe extends PMProGateway {
 
 		// Only for use with Stripe Checkout.
 		$tax_behavior = get_option( 'pmpro_stripe_tax' );
-		if ( ! self::using_stripe_checkout() || empty( $tax_behavior ) ) {
+		//var_dump($tax_behavior,! self::using_stripe_checkout());
+
+		/*if ( ! self::using_stripe_checkout() || empty( $tax_behavior ) ) {
 			$tax_behavior = 'no';
-		}
+
+		}*/
 
 		$price_search_args = array(
 			'product'  => $product_id,
@@ -2893,9 +2902,9 @@ class PMProGateway_etsStripe extends PMProGateway {
 				continue;
 			}
 			// Check if tax is enabled and set up correctly. If not, continue.
-			if ( 'no' !== $tax_behavior && $price->tax_behavior !== $tax_behavior ) {
+			/*if ( 'no' !== $tax_behavior && $price->tax_behavior !== $tax_behavior ) {
 				continue;
-			}
+			}*/
 			return $price;
 		}
 
@@ -3045,6 +3054,7 @@ class PMProGateway_etsStripe extends PMProGateway {
 	 * @return Stripe_Subscription|bool false if error.
 	 */
 	public function create_subscription_for_customer_from_order( $customer_id, $order ) {
+		global $pmpro_currency;
 		$subtotal = $order->PaymentAmount;
 		$tax      = $order->getTaxForPrice( $subtotal );
 		$amount   = pmpro_round_price( (float) $subtotal + (float) $tax );
@@ -3079,19 +3089,37 @@ class PMProGateway_etsStripe extends PMProGateway {
 			$subscription_params = array(
 				'customer'          => $customer_id,
 				'default_payment_method' => $payment_method_id,
+				//'default_tax_rates' => array('txr_1PfuTDEJfNYkxEoIek2xgSTX'),
 				'items'             => array(
 					array( 'price' => $price->id ),
+					/*array( 'price_data' => array(
+						'currency' => strtolower( $pmpro_currency ),
+						'product'  => $product_id,
+						'recurring'     =>  array(
+				            "interval"=> "month",
+				            "interval_count"=> 1,
+				           ),
+						'tax_behavior' => $price->tax_behavior ) 
+					),*/
+
 				),
 				'trial_period_days' => $trial_period_days,
 				'expand'                 => array(
 					'pending_setup_intent.payment_method',
 				),
+				'automatic_tax' => array(
+				    'enabled' => true,
+				),
+
 			);
+
 			if ( ! self::using_legacy_keys() ) {
 				$params['application_fee_percent'] = $this->get_application_fee_percentage();
 			}
 			$subscription_params = apply_filters( 'pmpro_stripe_create_subscription_array', $subscription_params );
 			$subscription = Stripe_Subscription::create( $subscription_params );
+			//var_dump($subscription);
+			//die;
 		} catch ( Stripe\Error\Base $e ) {
 			$order->error = $e->getMessage();
 			return false;
@@ -3903,6 +3931,77 @@ class PMProGateway_etsStripe extends PMProGateway {
 		return $payment_intent;
 	}
 
+	private function update_payment_intent( &$order,$payment_intent ){
+		global $pmpro_currency;
+		$amount          = $order->InitialPayment;
+		$order->subtotal = $amount;
+		$tax             = $order->getTax( true );
+		$amount = pmpro_round_price( (float) $order->subtotal + (float) $tax );
+		$stripe = new PMProGateway_etsStripe();
+
+		/*$update_params = array(
+			'amount' => $totalAmount,
+            'application_fee_amount' => 200, // example application fee in cents
+            'transfer_data' => [
+                'destination' => 'acct_1BlmtAEJfNYkxEoI', // example connected account ID
+            ],
+            'invoice_settings' => [
+                'default_tax_rates' => ['txr_1PlQY3EJfNYkxEoIHy9tBDuT'], // example tax rate ID
+            ],
+		);
+
+		try {
+			$updatedPaymentIntent = Stripe_PaymentIntent::update($order->payment_intent_id, $update_params );
+		} catch ( Stripe\Error\Base $e ) {
+			$order->error = $e->getMessage();
+			return false;
+		} catch ( \Throwable $e ) {
+			$order->error = $e->getMessage();
+			return false;
+		} catch ( \Exception $e ) {
+			$order->error = $e->getMessage();
+			return false;
+		}*/
+
+		$headers = [
+            'Authorization: Bearer ' . $stripe->get_secretkey(),
+            'Content-Type: application/x-www-form-urlencoded',
+        ];
+
+        // Set up the request body
+        $body = http_build_query([
+           //'amount' => $amount,
+            //'application_fee_amount' => 200, // example application fee in cents
+            /*'transfer_data' => [
+                'destination' => 'acct_1BlmtAEJfNYkxEoI', // example connected account ID
+            ],*/
+            /*'invoice_settings' => [
+                'default_tax_rates' => ['txr_1PlQY3EJfNYkxEoIHy9tBDuT'], // example tax rate ID
+            ],*/
+        ]);
+
+        // Initialize cURL
+        $ch = curl_init('https://api.stripe.com/v1/payment_intents/'.$payment_intent->id);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+
+        // Execute the request and parse the response
+        $response = curl_exec($ch);
+        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_status !== 200) {
+            throw new Exception("Stripe API request failed with status $http_status: $response");
+        }
+
+        $update_payment_intent = json_decode($response);
+        return $update_payment_intent;
+       // var_dump($update_payment_intent);
+        //die;
+	}
+
 	/**
 	 * @since 2.7 Deprecated for public use.
 	 * @since 3.0 Updated to private non-static.
@@ -3913,9 +4012,12 @@ class PMProGateway_etsStripe extends PMProGateway {
 		$amount          = $order->InitialPayment;
 		$order->subtotal = $amount;
 		$tax             = $order->getTax( true );
-
+		//$tax      = $order->getTaxForPrice( $amount );
+		//var_dump($amount,$tax);
+		//update_option('tax_optio',$tax);
 		$amount = pmpro_round_price( (float) $order->subtotal + (float) $tax );
 
+		$tax_calculation = $this->calculateTax($order, $amount);
 		$params = array(
 			'customer'               => $order->stripe_customer->id,
 			'payment_method'         => $order->payment_method_id,
@@ -3924,7 +4026,12 @@ class PMProGateway_etsStripe extends PMProGateway {
 			'confirmation_method'    => 'manual',
 			'description'            => PMProGateway_etsStripe::get_order_description( $order ),
 			'setup_future_usage'     => 'off_session',
+			'metadata' => [
+               'tax_calculation' => $tax_calculation->id,
+            ],
+            //'tax_rates' => ['txr_1PfuTDEJfNYkxEoIek2xgSTX']
 		);
+		
 		$params = $this->add_application_fee_amount( $params );
 
 		/**
@@ -3950,7 +4057,112 @@ class PMProGateway_etsStripe extends PMProGateway {
 			return false;
 		}
 
+		//$payment_intent = $this->update_payment_intent($order, $payment_intent);
+		$tax_calculation_id = $payment_intent->metadata->tax_calculation;
+		$this->tax_transactions_create_from_calculation($order, $tax_calculation_id);
+
 		return $payment_intent;
+	}
+
+	public function calculateTax($order, $amount ) {
+
+		global $pmpro_currency;
+		$stripe = new PMProGateway_etsStripe();
+		$stripe->get_secretkey();
+		$customer_id = get_user_meta( $order->user_id, 'pmpro_stripe_customerid', true );
+		$headers = [
+            'Authorization: Bearer ' . $stripe->get_secretkey(),
+            'Content-Type: application/x-www-form-urlencoded',
+        ];
+
+        // Set up the request body
+        $body = http_build_query([
+           // 'amount' => $order->total * 100, // amount in cents
+            'currency' => $pmpro_currency,
+            'customer' => $customer_id,
+            /*'customer_details' => [
+	    		'address' => [
+	                'line1' => $order->billing->street,
+	                'city' => $order->billing->city,
+	                'state' => $order->billing->state,
+	                'postal_code' => $order->billing->postal_code,
+	                'country' => $order->billing->country,
+	            ],
+	            'address_source' => 'billing',
+	            'tax_ids' => ['txr_1PlQY3EJfNYkxEoIHy9tBDuT'],
+        	],*/
+        	'line_items' => [
+			    [
+			      'amount' => $amount,
+			      'tax_code' => 'txcd_20030000',
+			      'reference' => 'General Services',
+			      'tax_behavior' => 'exclusive',
+			    ],
+		  	],
+		  	'expand' => ['line_items'],
+
+        ]);
+
+        // Initialize cURL
+        $ch = curl_init('https://api.stripe.com/v1/tax/calculations');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+
+        // Execute the request and parse the response
+        $response = curl_exec($ch);
+        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_status !== 200) {
+            throw new Exception("Stripe API request failed with status $http_status: $response");
+        }
+
+        $taxCalculation = json_decode($response);
+
+        // Parse the response
+	    return $taxCalculation;
+	}
+
+	public function tax_transactions_create_from_calculation($order,$tax_calculation_id ) {
+
+		global $pmpro_currency;
+		$stripe = new PMProGateway_etsStripe();
+		$stripe->get_secretkey();
+		$customer_id = get_user_meta( $order->user_id, 'pmpro_stripe_customerid', true );
+		$headers = [
+            'Authorization: Bearer ' . $stripe->get_secretkey(),
+            'Content-Type: application/x-www-form-urlencoded',
+        ];
+
+        // Set up the request body
+        $body = http_build_query([
+           'calculation' => $tax_calculation_id,
+           'reference'   => $order->code,
+           'expand'    => ['line_items'],
+        ]);
+
+        // Initialize cURL
+        $ch = curl_init('https://api.stripe.com//v1/tax/transactions/create_from_calculation');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+
+        // Execute the request and parse the response
+        $response = curl_exec($ch);
+        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_status !== 200) {
+            throw new Exception("Stripe API request failed with status $http_status: $response");
+        }
+
+        $taxCalculation = json_decode($response);
+
+        // Parse the response
+	    return $taxCalculation;
 	}
 
 	/**
