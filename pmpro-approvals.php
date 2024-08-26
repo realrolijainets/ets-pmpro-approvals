@@ -47,6 +47,7 @@ class PMPro_Approvals {
 		//add support for PMPro Email Templates Add-on
 		add_filter( 'pmproet_templates', array( 'PMPro_Approvals', 'pmproet_templates' ) );
 		add_filter( 'pmpro_email_filter', array( 'PMPro_Approvals', 'pmpro_email_filter' ) );
+		add_action('pmpro_subscription_payment_completed', array('PMPro_Approvals', 'ets_custom_tax_on_subscription_payment'), 10);
 	}
 
 	/**
@@ -2499,6 +2500,42 @@ style="display: none;"<?php } ?>>
 		<input type="hidden" name="subscription_text" value="here3">
 		<?php
 	}
+
+	public static function ets_custom_tax_on_subscription_payment($order) {
+    	// 1. Get the order ID
+    	$order_id = $order->id;
+    
+    	// 2. Get the membership level associated with the order
+    	$membership_level_id = $order->membership_id;
+    	$membership_level = pmpro_getMembershipLevelForUser($order->user_id);
+    
+	    // Ensure that the membership level is correctly fetched
+	    if (empty($membership_level) || $membership_level->id != $membership_level_id) {
+	        // If membership level is not found, log the error and return
+	        error_log("Error fetching membership level for order ID: " . $order_id);
+	        return;
+	    }
+
+	    // 3. Get the recurring amount for the level
+	    $recurring_amount = $membership_level->billing_amount;
+
+	    // 4. Calculate the tax (replace the tax calculation with your logic)
+	    $tax_rate = 0.10; // Example: 10% tax rate
+	    $tax_amount = $recurring_amount * $tax_rate;
+
+	    // 5. Update the subtotal, tax, and total
+	    $subtotal = $recurring_amount; // In case the subtotal is the same as the recurring amount
+	    $total = $subtotal + $tax_amount;
+
+	    // 6. Update the order with the new tax and total values
+	    $order->subtotal = $subtotal;
+	    $order->tax = $tax_amount;
+	    $order->total = $total;
+
+	    // Save the updated order data
+	    $order->saveOrder();
+	}
+
 
 
 } // end class

@@ -2866,6 +2866,7 @@ class PMProGateway_etsStripe extends PMProGateway {
 
 		// Only for use with Stripe Checkout.
 		$tax_behavior = get_option( 'pmpro_stripe_tax' );
+		//$tax_behavior = 'inclusive';
 		//var_dump($tax_behavior,! self::using_stripe_checkout());
 
 		/*if ( ! self::using_stripe_checkout() || empty( $tax_behavior ) ) {
@@ -3057,7 +3058,8 @@ class PMProGateway_etsStripe extends PMProGateway {
 		global $pmpro_currency;
 		$subtotal = $order->PaymentAmount;
 		$tax      = $order->getTaxForPrice( $subtotal );
-		$amount   = pmpro_round_price( (float) $subtotal + (float) $tax );
+		//$amount   = pmpro_round_price( (float) $subtotal + (float) $tax );
+		$amount   = pmpro_round_price( (float) $subtotal);
 
 		// Set up the subscription.
 		$product_id = $this->get_product_id_for_level( $order->membership_id );
@@ -4017,7 +4019,7 @@ class PMProGateway_etsStripe extends PMProGateway {
 		//update_option('tax_optio',$tax);
 		$amount = pmpro_round_price( (float) $order->subtotal + (float) $tax );
 
-		$tax_calculation = $this->calculateTax($order, $amount);
+		//$tax_calculation = $this->calculateTax($order, $amount);
 		$params = array(
 			'customer'               => $order->stripe_customer->id,
 			'payment_method'         => $order->payment_method_id,
@@ -4026,9 +4028,9 @@ class PMProGateway_etsStripe extends PMProGateway {
 			'confirmation_method'    => 'manual',
 			'description'            => PMProGateway_etsStripe::get_order_description( $order ),
 			'setup_future_usage'     => 'off_session',
-			'metadata' => [
+			/*'metadata' => [
                'tax_calculation' => $tax_calculation->id,
-            ],
+            ],*/
             //'tax_rates' => ['txr_1PfuTDEJfNYkxEoIek2xgSTX']
 		);
 		
@@ -4058,8 +4060,8 @@ class PMProGateway_etsStripe extends PMProGateway {
 		}
 
 		//$payment_intent = $this->update_payment_intent($order, $payment_intent);
-		$tax_calculation_id = $payment_intent->metadata->tax_calculation;
-		$this->tax_transactions_create_from_calculation($order, $tax_calculation_id);
+		//$tax_calculation_id = $payment_intent->metadata->tax_calculation;
+		//$this->tax_transactions_create_from_calculation($order, $tax_calculation_id);
 
 		return $payment_intent;
 	}
