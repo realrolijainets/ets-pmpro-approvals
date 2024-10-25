@@ -191,7 +191,7 @@ class PMProGateway_etsStripe extends PMProGateway {
 
 		add_action( 'pmpro_payment_option_fields', array( 'PMProGateway_etsStripe', 'pmpro_set_up_apple_pay' ), 10, 2 );
 		add_action( 'init', array( 'PMProGateway_etsStripe', 'clear_saved_subscriptions' ) );
-		add_action( 'pmpro_billing_preheader', array( 'PMProGateway_etsStripe', 'pmpro_billing_preheader_stripe_customer_portal' ), 5 );
+		//add_action( 'pmpro_billing_preheader', array( 'PMProGateway_etsStripe', 'pmpro_billing_preheader_stripe_customer_portal' ), 5 );
 
 		// Stripe Connect functions.
 		add_action( 'admin_init', array( 'PMProGateway_etsStripe', 'stripe_connect_save_options' ) );

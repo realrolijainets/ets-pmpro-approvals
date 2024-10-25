@@ -152,7 +152,10 @@ class PMPro_Approvals {
 
 		add_action('pmpro_checkout_before_processing', array('PMPro_Approvals','pmpro_checkout_before_processing'));
 
-		add_action('pmpro_member_action_links_after', array('PMPro_Approvals', 'ets_pmpro_member_action_after_links'));
+		//add_action('pmpro_member_action_links_after', array('PMPro_Approvals', 'ets_pmpro_member_action_after_links'));
+
+		add_filter( 'gettext', array('PMPro_Approvals', 'change_tax_to_gst_in_pmpro_invoice' ), 10, 3  );
+
 
 	}
 	public static function pmpro_checkout_before_processing()
@@ -265,13 +268,46 @@ class PMPro_Approvals {
 		return $r;
 
 	}
+	
+	public static function change_tax_to_gst_in_pmpro_invoice( $translated_text, $text, $domain ) {
+	    if ( $domain == 'paid-memberships-pro' ) {
+	        if ( $text == 'Tax' ) {
+	            $translated_text = 'GST';
+	        }
+	    }
+	    return $translated_text;
+	}
 
 	public static function pmpro_member_action_links( $pmpro_member_action_links, $level_id )
 	{
+		global $wpdb, $current_user;
 		$pmpro_levels = pmpro_getAllLevels(false, true);
 		$mylevel = pmpro_getMembershipLevelForUser();
-			//var_dump($pmpro_member_action_links);
-		
+		$subscriptions =  PMPro_Subscription::get_subscriptions_for_user( $current_user->ID, $level_id );
+		if ( $subscriptions ) {
+			$subscription = $subscriptions[0];
+			if ( $subscription->get_gateway() == get_option( 'pmpro_gateway' ) ) {
+				// Get the Stripe Customer.
+				
+				$stripe = new PMProGateway_etsStripe();
+				$customer = $stripe->get_customer_for_user( $current_user->ID );
+				if ( empty( $customer->id ) ) {
+					$error = __( 'Could not get Stripe customer for user.', 'paid-memberships-pro' );
+				}
+				if ( empty( $error ) ) {
+					// Send the user to the customer portal.
+					$customer_portal_url = $stripe->get_customer_portal_url( $customer->id );
+					if ( ! empty( $customer_portal_url ) ) {
+						//wp_redirect( $customer_portal_url );
+						//exit;
+						$pmpro_member_action_links['update_billing_info_to_stripe'] = sprintf( '<a id="pmpro_actionlink-ets-update-info-stripe" href="%s">%s</a>', esc_url($customer_portal_url ), esc_html__( 'Update Billing Information', 'paid-memberships-pro' ) );
+						unset($pmpro_member_action_links['update-billing']);
+
+					}
+					//$error = __( 'Could not get Customer Portal URL. This feature may not be set up in Stripe.', 'paid-memberships-pro' );
+				}
+			}
+		}
 		if( array_key_exists($level_id, $pmpro_levels) && pmpro_isLevelExpiringSoon( $mylevel ) ) {
 			$pmpro_member_action_links['renew_ets'] = sprintf( '<a id="pmpro_actionlink-ets-renew" href="%s">%s</a>', esc_url( add_query_arg(array('level'=> $level_id,'renew_level'=>$level_id) , pmpro_url( 'checkout', '', 'https' ) ) ), esc_html__( 'Renew', 'paid-memberships-pro' ) );
 			unset($pmpro_member_action_links['renew']);
@@ -317,7 +353,7 @@ class PMPro_Approvals {
 			array(),
 			PMPRO_APPROVAL_VERSION
 		);
-		if ( isset( $_GET['page'] ) && $_GET['page'] == 'pmpro-approvals' || $_GET['page'] == 'stripe-members' || $_GET['page'] == 'none-stripe-members' || $_GET['page'] == 'grace-members') {
+		if ( isset( $_GET['page'] ) && ($_GET['page'] == 'pmpro-approvals' || $_GET['page'] == 'stripe-members' || $_GET['page'] == 'none-stripe-members' || $_GET['page'] == 'grace-members')) {
 			wp_enqueue_style('pmpro_approvals_datatable_css');
 			wp_enqueue_script('pmpro_approvals_datatable_js');
 		}
@@ -2494,10 +2530,10 @@ style="display: none;"<?php } ?>>
 		$last_order->saveOrder();
 	}*/
 
-	public static function ets_pmpro_member_action_after_links($value='')
+	public static function ets_pmpro_member_action_after_links($pmpro_member_action_links, $level_id)
 	{
 		?>
-		<input type="hidden" name="subscription_text" value="here3">
+		<a href=""></a>
 		<?php
 	}
 
