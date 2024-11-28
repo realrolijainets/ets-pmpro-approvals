@@ -155,9 +155,115 @@ class PMPro_Approvals {
 		//add_action('pmpro_member_action_links_after', array('PMPro_Approvals', 'ets_pmpro_member_action_after_links'));
 
 		add_filter( 'gettext', array('PMPro_Approvals', 'change_tax_to_gst_in_pmpro_invoice' ), 10, 3  );
+		add_shortcode( 'dynamic_billing_url', array('PMPro_Approvals','dynamic_billing_url_shortcode' ) );
+		
+		add_action('pmpro_after_checkout', array('PMPro_Approvals', 'save_registrar_date_and_set_expiry') );
 
-
+		//add_action('pmpro_checkout_before_submit_button', array('PMPro_Approvals', 'add_registrar_date_field') );
+		
+		//add_action('pmpro_checkout_after_pricing_fields', array('PMPro_Approvals', 'validate_registrar_date_field') );
 	}
+
+	public static function add_registrar_date_field() {
+	    // Get the current membership level being selected
+	    global $pmpro_level;
+	    $registrar_level_id = 1; // Replace 123 with your Registrar membership level ID
+	    
+	    if ($pmpro_level->id == $registrar_level_id) {
+	    	$registrar_completion_date = isset($_REQUEST['registrar_completion_date']) ? sanitize_text_field($_REQUEST['registrar_completion_date']) : '';
+	        ?>
+	        <div class="pmpro_checkout">
+	            <label for="registrar_completion_date">Registrar Date of Completion</label>
+	            <input type="date" id="registrar_completion_date" name="registrar_completion_date" value="<?php echo esc_attr($registrar_completion_date); ?>" required>
+	        </div>
+	        <?php
+	    }
+	}
+
+	// Validate the field input
+	public static function validate_registrar_date_field() {
+	    if (!empty($_REQUEST['registrar_completion_date']) && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $_REQUEST['registrar_completion_date'])) {
+	        pmpro_setMessage("Please provide a valid date for Registrar Date of Completion.", "pmpro_error");
+	    }
+	}
+
+	// Save the date to user meta and set expiration
+	public static function save_registrar_date_and_set_expiry($user_id) {
+	    global $wpdb;
+
+	    if (!empty($_POST['registrar_completion_date'])) {
+	        $registrar_completion_date = sanitize_text_field($_POST['registrar_completion_date']);
+	        update_user_meta($user_id, 'registrar_completion_date', $registrar_completion_date);
+	        
+	        // Set expiration date based on the completion date
+	        $level_id = pmpro_getMembershipLevelForUser($user_id)->id;
+	        $registrar_level_id = 1; // Replace with your Registrar membership level ID
+
+	        if ($level_id == $registrar_level_id) {
+	            $expiration_date = strtotime($registrar_completion_date);
+	            if ($expiration_date) {
+	                // Update the membership expiration
+	                $expiration_date_formatted = date('Y-m-d', $expiration_date);
+	                $table_name = $wpdb->prefix . "pmpro_memberships_users";
+                    $wpdb->update(
+                        $table_name,
+                        array(
+                            'enddate' => $expiration_date_formatted, // New expiry date
+                        ),
+                        array(
+                            'user_id' => $user_id, // Target the specific user
+                            'membership_id' => $level_id // Target the specific membership level
+                        ),
+                        array('%s'), // Format for `enddate`
+                        array('%d', '%d') // Formats for `user_id` and `membership_id`
+                    );
+            	 }
+            }
+	    }
+	}
+
+
+	public static function dynamic_billing_url_shortcode() {
+
+	    if ( is_user_logged_in() ) {
+	        $current_user = wp_get_current_user();
+	        $user_id = $current_user->ID;
+	        if ( function_exists( 'pmpro_getMembershipLevelForUser' ) ) {
+	            $level = pmpro_getMembershipLevelForUser( $user_id );
+	            $level_id = $level ? $level->id : 0; // Get level ID or default to 0.
+	        } else {
+	            $level_id = 0; // Fallback if PMPro is not active.
+	        }
+	        $level_id = intval($level_id);
+	        $user_id = intval($user_id);
+			$subscriptions =  PMPro_Subscription::get_subscriptions_for_user( $user_id, $level_id );
+	        
+			if ( $subscriptions ) {
+				$subscription = $subscriptions[0];
+				if ( $subscription->get_gateway() == get_option( 'pmpro_gateway' ) ) {
+					// Get the Stripe Customer.
+					
+					$stripe = new PMProGateway_etsStripe();
+					$customer = $stripe->get_customer_for_user( $user_id );
+					if ( empty( $customer->id ) ) {
+						$error = __( 'Could not get Stripe customer for user.', 'paid-memberships-pro' );
+					}
+					if ( empty( $error ) ) {
+						// Send the user to the customer portal.
+						$customer_portal_url = $stripe->get_customer_portal_url( $customer->id );
+						if ( ! empty( $customer_portal_url ) ) {
+							$cleaned_url = str_replace(["http://", "https://","https//"], "", $customer_portal_url);
+							return $cleaned_url;
+						}
+
+					}
+				}
+			}
+	        
+	    }
+	    return '#'; // Default URL for non-logged-in users or fallback.
+	}
+
 	public static function pmpro_checkout_before_processing()
 	{
 		if (isset($_GET['renew_level'])) {
@@ -1296,8 +1402,7 @@ class PMPro_Approvals {
 		//complete intent payment
 		$last_order = new MemberOrder();
 		$order_status = 'success';
-		// var_dump($last_order);
-		// die;
+		$customer_id = '';
 		$last_order->getLastMemberOrder( $user_id, $order_status );
 		if($last_order->gateway == 'etsstripe'){
 			$payment_intent_id = $last_order->notes;
@@ -1349,21 +1454,25 @@ class PMPro_Approvals {
 					$customer_id = $customer->id;
 
 				}
-			
+				
 			// 	update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription_customer_id', $customer_id );
 
+			}
+			if ( !$customer_id ) {
+				$customer_id = get_user_meta($user_id, 'pmpro_stripe_customerid', true);
 			}
 			//Create subscription if level is recurring.
 			
 			if ( pmpro_isLevelRecurring( $user_level ) && ! $last_order->subscription_transaction_id && $customer_id ) {
-				//$last_order->PaymentAmount = $user_level->billing_amount;
+				$last_order->PaymentAmount = $user_level->billing_amount;
 				// apply tax
-				$last_order->PaymentAmount  =  $user_level->billing_amount+round((float)$user_level->billing_amount * 0.1, 2);
+				//$last_order->PaymentAmount  =  $user_level->billing_amount+round((float)$user_level->billing_amount * 0.1, 2);
 				$last_order->BillingPeriod    = $user_level->cycle_period;
 				$last_order->BillingFrequency = $user_level->cycle_number;
 
 				try{
 					$subscription = $last_order->Gateway->create_subscription_for_customer_from_order($customer_id, $last_order );
+					
 					update_pmpro_membership_order_meta( $last_order->id, 'ets_check_subscription', $subscription );
 				}
 				catch ( Stripe\Error\Base $e ) {

@@ -3069,6 +3069,7 @@ class PMProGateway_etsStripe extends PMProGateway {
 		}
 
 		$price = $this->get_price_for_product( $product_id, $amount, $order->BillingPeriod, $order->BillingFrequency );
+
 		if ( is_string( $price ) ) {
 			$order->error = esc_html__( 'Cannot get price.', 'paid-memberships-pro' ) . ' ' . esc_html( $price );
 			return false;
@@ -3086,6 +3087,7 @@ class PMProGateway_etsStripe extends PMProGateway {
 		}
 
 		$trial_period_days = $this->calculate_trial_period_days( $order );
+			
 
 		try {
 			$subscription_params = array(
@@ -3115,20 +3117,36 @@ class PMProGateway_etsStripe extends PMProGateway {
 
 			);
 
+			$subscription_params = array(
+				'customer'          => $customer_id,
+				'default_payment_method' => $order->payment_method_id,
+				'items'             => array(
+					array( 'price' => $price->id ),
+				),
+				'trial_period_days' => $trial_period_days,
+				'expand'                 => array(
+					'pending_setup_intent.payment_method',
+				),
+			);
+
 			if ( ! self::using_legacy_keys() ) {
 				$params['application_fee_percent'] = $this->get_application_fee_percentage();
 			}
 			$subscription_params = apply_filters( 'pmpro_stripe_create_subscription_array', $subscription_params );
 			$subscription = Stripe_Subscription::create( $subscription_params );
-			//var_dump($subscription);
+
 			//die;
 		} catch ( Stripe\Error\Base $e ) {
 			$order->error = $e->getMessage();
 			return false;
 		} catch ( \Throwable $e ) {
+		var_dump('2',$e->getMessage());
+
 			$order->error = $e->getMessage();
 			return false;
 		} catch ( \Exception $e ) {
+		var_dump('3', $e->getMessage());
+
 			$order->error = $e->getMessage();
 			return false;
 		}
