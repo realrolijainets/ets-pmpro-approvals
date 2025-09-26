@@ -47,7 +47,6 @@ class PMPro_Approvals {
 		//add support for PMPro Email Templates Add-on
 		add_filter( 'pmproet_templates', array( 'PMPro_Approvals', 'pmproet_templates' ) );
 		add_filter( 'pmpro_email_filter', array( 'PMPro_Approvals', 'pmpro_email_filter' ) );
-		add_action('pmpro_subscription_payment_completed', array('PMPro_Approvals', 'ets_custom_tax_on_subscription_payment'), 10);
 	}
 
 	/**
@@ -157,12 +156,39 @@ class PMPro_Approvals {
 		add_filter( 'gettext', array('PMPro_Approvals', 'change_tax_to_gst_in_pmpro_invoice' ), 10, 3  );
 		add_shortcode( 'dynamic_billing_url', array('PMPro_Approvals','dynamic_billing_url_shortcode' ) );
 		
-		add_action('pmpro_after_checkout', array('PMPro_Approvals', 'save_registrar_date_and_set_expiry') );
+		add_action('pmpro_after_checkout', array('PMPro_Approvals', 'save_registrar_date_and_set_expiry'), 10, 2 );
 
+		add_action('pmpro_subscription_payment_completed', array('PMPro_Approvals', 'ets_custom_tax_on_subscription_payment'), 10);
+
+
+		add_filter('pmpro_billing_address_fields', array('PMPro_Approvals', 'my_custom_billing_address_fields'));
 		//add_action('pmpro_checkout_before_submit_button', array('PMPro_Approvals', 'add_registrar_date_field') );
 		
 		//add_action('pmpro_checkout_after_pricing_fields', array('PMPro_Approvals', 'validate_registrar_date_field') );
 	}
+
+	public static function my_custom_billing_address_fields($fields) {
+    // Add a custom field for "Title" before the billing first name
+    $fields['title_field'] = array(
+        'label'   => 'Title',
+        'type'    => 'text',
+        'size'    => 30, // Adjust size as needed
+        'class'   => 'pmpro_checkout',
+        'profile' => true, // Show in user profile
+        'required' => true, // Make this field required
+    );
+
+    // Adjust field order by reordering the array
+    $new_fields = [];
+    foreach ($fields as $key => $field) {
+        if ($key === 'bfirstname') {
+            $new_fields['title_field'] = $fields['title_field']; // Add title field before first name
+        }
+        $new_fields[$key] = $field;
+    }
+
+    return $new_fields;
+}
 
 	public static function add_registrar_date_field() {
 	    // Get the current membership level being selected
@@ -188,7 +214,7 @@ class PMPro_Approvals {
 	}
 
 	// Save the date to user meta and set expiration
-	public static function save_registrar_date_and_set_expiry($user_id) {
+	public static function save_registrar_date_and_set_expiry($user_id, $order) {
 	    global $wpdb;
 
 	    if (!empty($_POST['registrar_completion_date'])) {
@@ -220,11 +246,45 @@ class PMPro_Approvals {
             	 }
             }
 	    }
+	    // 1. Get the order ID
+    	$order_id = $order->id;
+    
+    	// 2. Get the membership level associated with the order
+    	$membership_level_id = $order->membership_id;
+    	$membership_level = pmpro_getMembershipLevelForUser($order->user_id);
+    
+	    // Ensure that the membership level is correctly fetched
+	    if (empty($membership_level) || $membership_level->id != $membership_level_id) {
+	        // If membership level is not found, log the error and return
+	        error_log("Error fetching membership level for order ID: " . $order_id);
+	        return;
+	    }
+
+	    // 3. Get the recurring amount for the level
+	    //$recurring_amount = $membership_level->billing_amount;
+	    $recurring_amount = $membership_level->initial_payment;
+
+	 
+
+	    // 4. Calculate the tax (replace the tax calculation with your logic)
+	    $tax_rate = 0.10; // Example: 10% tax rate
+	    $tax_amount = $recurring_amount * $tax_rate;
+
+	    // 5. Update the subtotal, tax, and total
+	    $subtotal = $recurring_amount - $tax_amount; // In case the subtotal is the same as the recurring amount
+	    $total = $subtotal + $tax_amount;
+
+	    // 6. Update the order with the new tax and total values
+	    $order->subtotal = $subtotal;
+	    $order->tax = $tax_amount;
+	    $order->total = $total;
+
+	    // Save the updated order data
+	    $order->saveOrder();
 	}
 
 
 	public static function dynamic_billing_url_shortcode() {
-
 	    if ( is_user_logged_in() ) {
 	        $current_user = wp_get_current_user();
 	        $user_id = $current_user->ID;
@@ -2669,7 +2729,7 @@ style="display: none;"<?php } ?>>
 	    $tax_amount = $recurring_amount * $tax_rate;
 
 	    // 5. Update the subtotal, tax, and total
-	    $subtotal = $recurring_amount; // In case the subtotal is the same as the recurring amount
+	    $subtotal = $recurring_amount-$tax_amount; // In case the subtotal is the same as the recurring amount
 	    $total = $subtotal + $tax_amount;
 
 	    // 6. Update the order with the new tax and total values
